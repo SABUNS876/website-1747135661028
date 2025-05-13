@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DDoS Attack Simulation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap');
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    background-color: #121212;
+    color: #00ff00;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 16px;
+    user-select: none;
+    overflow-x: hidden;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+  }
+  h1 {
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+    font-size: 2rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #00ff00;
+    text-shadow:
+      0 0 5px #00ff00,
+      0 0 10px #00ff00,
+      0 0 20px #00ff00,
+      0 0 40px #0f0;
+  }
+  .status-bar {
+    width: 100%;
+    max-width: 600px;
+    background: #222;
+    border-radius: 8px;
+    box-shadow: inset 0 0 10px #0f0;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+  .status-fill {
+    height: 12px;
+    background: linear-gradient(90deg, #0f0, #0a0);
+    width: 0%;
+    animation: pulse 1.5s infinite alternate;
+    transition: width 0.3s ease-in-out;
+  }
+  @keyframes pulse {
+    0% { opacity: 0.6; }
+    100% { opacity: 1; }
+  }
+  .log-container {
+    width: 100%;
+    max-width: 600px;
+    height: 340px;
+    background: black;
+    border-radius: 8px;
+    box-shadow:
+      inset 0 0 10px #0f0,
+      0 0 12px #0f0;
+    padding: 1rem;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.3;
+    border: 1px solid #0f0;
+  }
+  .log-entry {
+    margin-bottom: 2px;
+  }
+  .timestamp {
+    color: #0f0;
+    opacity: 0.7;
+  }
+  .ip {
+    color: #9f9;
+  }
+  .method {
+    color: #6f6;
+  }
+  .url {
+    color: #cfc;
+  }
+  .status {
+    color: #0f0;
+    font-weight: 700;
+  }
+  .status-error {
+    color: #f55;
+  }
+  .footer {
+    margin-top: auto;
+    font-size: 12px;
+    color: #066006;
+    opacity: 0.6;
+    user-select: none;
+  }
+  @media (max-width: 400px) {
+    body {
+      font-size: 14px;
+      padding: 0.5rem;
+    }
+    .log-container {
+      height: 260px;
+      font-size: 12px;
+    }
+    .status-bar {
+      height: 10px;
+    }
+  }
+</style>
+</head>
+<body>
+<h1>DDoS Attack Simulation</h1>
+<div class="status-bar" aria-label="Simulation traffic progress">
+  <div class="status-fill"></div>
+</div>
+<div class="log-container" aria-live="polite" aria-atomic="false" aria-relevant="additions">
+  <!-- Log entries go here -->
+</div>
+<div class="footer">Simulating network traffic... (For testing purposes only)</div>
+
+<script>
+(function() {
+  const logContainer = document.querySelector('.log-container');
+  const statusFill = document.querySelector('.status-fill');
+
+  // Simulate IP addresses in common public IPv4 ranges for realism
+  const ipPools = [
+    {rangeStart: [192,168,0,0], rangeEnd: [192,168,255,255]}, // Private
+    {rangeStart: [10,0,0,0], rangeEnd: [10,255,255,255]}, // Private
+    {rangeStart: [172,16,0,0], rangeEnd: [172,31,255,255]}, // Private
+    {rangeStart: [23,45,0,0], rangeEnd: [23,45,255,255]}, // Example public
+    {rangeStart: [104,16,0,0], rangeEnd: [104,31,255,255]}, // Example public
+    {rangeStart: [185,60,0,0], rangeEnd: [185,60,255,255]}, // VPS provider example
+  ];
+
+  // HTTP methods commonly seen in attacks or normal traffic
+  const methods = ['GET', 'POST', 'HEAD', 'OPTIONS'];
+
+  // URLs targeted for the "attack" simulation
+  const urls = [
+    '/',
+    '/login',
+    '/admin',
+    '/api/data',
+    '/api/auth',
+    '/wp-login.php',
+    '/index.php',
+    '/dashboard',
+    '/robots.txt',
+    '/favicon.ico',
+    '/cgi-bin/test-cgi',
+  ];
+
+  // Common HTTP status codes
+  const successStatuses = [200, 204, 301, 302];
+  const errorStatuses = [403, 404, 408, 429, 500, 502, 503];
+
+  // Generate random IP in given range
+  function randomIpFromRange(range) {
+    const ip = [];
+    for (let i = 0; i < 4; i++) {
+      const start = range.rangeStart[i];
+      const end = range.rangeEnd[i];
+      ip.push(Math.floor(Math.random() * (end - start + 1)) + start);
+    }
+    return ip.join('.');
+  }
+
+  // Randomly pick IP from one pool
+  function randomIp() {
+    const pool = ipPools[Math.floor(Math.random() * ipPools.length)];
+    return randomIpFromRange(pool);
+  }
+
+  // Random timestamp with current time precision
+  function timestamp() {
+    const now = new Date();
+    return now.toISOString().replace('T', ' ').slice(0, 23);
+  }
+
+  // Format log entry string
+  function formatLog(ip, method, url, status, ms) {
+    const timeStr = `<span class="timestamp">[${timestamp()}]</span>`;
+    const ipStr = `<span class="ip">${ip}</span>`;
+    const methodStr = `<span class="method">${method}</span>`;
+    const urlStr = `<span class="url">${url}</span>`;
+    const statusClass = status >= 400 ? 'status-error' : 'status';
+    const statusStr = `<span class="${statusClass}">${status}</span>`;
+    const msStr = `<span style="color:#0f0;">${ms}ms</span>`;
+    return `${timeStr} ${ipStr} → ${methodStr} ${urlStr} → ${statusStr} (${msStr})`;
+  }
+
+  // Helper to create new log element
+  function createLogEntry(text) {
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.innerHTML = text;
+    return div;
+  }
+
+  // Control variable to simulate progress
+  let progressPercent = 0;
+  // Speed range for progress bar updates (0.1% - 0.5% per iteration)
+  const progressIncrementMin = 0.1;
+  const progressIncrementMax = 0.45;
+
+  // Interval speed in ms for log and progress update
+  const intervalDelay = 70;
+
+  function updateProgress() {
+    if(progressPercent < 99) {
+      const incr = (Math.random() * (progressIncrementMax - progressIncrementMin)) + progressIncrementMin;
+      progressPercent = Math.min(99, progressPercent + incr);
+      statusFill.style.width = progressPercent + '%';
+    }
+  }
+
+  function simulateRequest() {
+    const ip = randomIp();
+    const method = methods[Math.floor(Math.random() * methods.length)];
+    const url = urls[Math.floor(Math.random() * urls.length)];
+    // 15% chance of error status to simulate real-world DDoS responses
+    let status;
+    if (Math.random() < 0.15) {
+      status = errorStatuses[Math.floor(Math.random() * errorStatuses.length)];
+    } else {
+      status = successStatuses[Math.floor(Math.random() * successStatuses.length)];
+    }
+    const ms = Math.floor(Math.random() * 150) + 20; // Random latency 20-170ms
+
+    const logHTML = formatLog(ip, method, url, status, ms);
+    const entry = createLogEntry(logHTML);
+    logContainer.appendChild(entry);
+
+    // Keep scroll pinned to bottom
+    logContainer.scrollTop = logContainer.scrollHeight;
+
+    // Limit log size to last 120 entries
+    while(logContainer.children.length > 120) {
+      logContainer.removeChild(logContainer.children[0]);
+    }
+  }
+
+  function tick() {
+    updateProgress();
+    simulateRequest();
+  }
+
+  // Initial fill width to 0%
+  statusFill.style.width = '0%';
+
+  // Run the simulation interval
+  const intervalId = setInterval(() => {
+    tick();
+    // When progress hits max 99, simulate "attack ending"
+    if(progressPercent >= 99) {
+      clearInterval(intervalId);
+      // Final fill to 100% with a highlight effect
+      statusFill.style.width = '100%';
+      statusFill.style.animation = 'none';
+      statusFill.style.background = 'linear-gradient(270deg, #0f0 0%, #afa 50%, #0f0 100%)';
+      // Add a final message
+      const finalEntry = createLogEntry('<span style="color:#0f0; font-weight: bold;">[System] Simulation complete. Attack traffic stopped.</span>');
+      logContainer.appendChild(finalEntry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+  }, intervalDelay);
+
+})();
+</script>
+</body>
+</html>
+
+```
